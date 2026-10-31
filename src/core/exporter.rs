@@ -1,4 +1,4 @@
-use crate::schedule::Schedule;
+use crate::core::schedule::Schedule;
 use roead::Endian;
 use roead::byml::Byml;
 
@@ -6,6 +6,7 @@ use roead::byml::Byml;
    Fixes the formatting in the human readable YAML.
    Not the prettiest, but it works.
 */
+#[cfg(not(target_arch = "wasm32"))]
 fn fix_yaml(byml: &Byml) -> Byml {
     match byml {
         Byml::I32(v) => Byml::I64(i64::from(*v)),
@@ -108,7 +109,8 @@ const WEAPON_UNLOCK: [(&str, i32); 58] = [
     ("'2016-06-08T11:00:00+09:00'", 5012),
 ];
 
-const HEADER: &str = "Version: 1\n\
+#[cfg(not(target_arch = "wasm32"))]
+const HEADER: &str ="Version: 1\n\
 IsBigEndian: True\n\
 SupportPaths: False\n\
 HasReferenceNodes: False\n\
@@ -166,7 +168,7 @@ fn build_byml(schedule: &Schedule, hash_kick: bool) -> Byml {
         Byml::String("2016-07-24T19:00:00+09:00".into()),
     );
     root.insert("BottleneckThreasholdFrame".into(), Byml::I32(480));
-    let aligned = crate::default_timestamp();
+    let aligned = crate::core::default_timestamp();
     let date_time = chrono::DateTime::from_timestamp(aligned, 0)
         .unwrap()
         .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -230,25 +232,16 @@ fn build_byml(schedule: &Schedule, hash_kick: bool) -> Byml {
     Byml::Map(root)
 }
 
-// Export the BYAML file
-pub fn export(
-    schedule: &Schedule,
-    path: &str,
-    hash_kick: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+// Serialize the schedule to BYAML bytes
+pub fn export_bytes(schedule: &Schedule, hash_kick: bool) -> Vec<u8> {
     let byml = build_byml(schedule, hash_kick);
     // Version 1 is being used on console
-    let bytes = byml.to_binary_with_version(Endian::Big, 1);
-    std::fs::write(path, bytes)?;
-    Ok(())
+    byml.to_binary_with_version(Endian::Big, 1)
 }
 
-// Export the human-readable YAML file
-pub fn export_text(
-    schedule: &Schedule,
-    path: &str,
-    hash_kick: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+// Serialize the human-readable YAML file contents
+#[cfg(not(target_arch = "wasm32"))]
+pub fn export_yaml_string(schedule: &Schedule, hash_kick: bool) -> String {
     let body = fix_yaml(&build_byml(schedule, hash_kick)).to_text();
     let mut out = String::from(HEADER);
     for line in body.lines() {
@@ -256,6 +249,27 @@ pub fn export_text(
         out.push_str(line);
         out.push('\n');
     }
-    std::fs::write(path, out)?;
+    out
+}
+
+// Export the BYAML file
+#[cfg(not(target_arch = "wasm32"))]
+pub fn export(
+    schedule: &Schedule,
+    path: &str,
+    hash_kick: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::write(path, export_bytes(schedule, hash_kick))?;
+    Ok(())
+}
+
+// Export the human-readable YAML file
+#[cfg(not(target_arch = "wasm32"))]
+pub fn export_text(
+    schedule: &Schedule,
+    path: &str,
+    hash_kick: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    std::fs::write(path, export_yaml_string(schedule, hash_kick))?;
     Ok(())
 }

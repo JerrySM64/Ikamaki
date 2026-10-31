@@ -1,13 +1,39 @@
 [package]
 name = "ikamaki"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [dependencies]
-chrono = "0.4"
+chrono = { version = "0.4", features = ["wasmbind"] }
 clap = { version = "4.6", features = ["derive"] }
 rand = "0.10"
+roead = { version = "1.0", default-features = false, features = ["byml"] }
+slint = "1.18"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# The YAML text format is parsed by ryml, a C++ library, which has no standard
+# library to build against on wasm32-unknown-unknown. Only native builds get it.
 roead = { version = "1.0", default-features = false, features = ["byml", "yaml"] }
+rfd = "0.17"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = "0.9"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.4", features = ["wasm_js"] }
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "Blob",
+    "Document",
+    "HtmlAnchorElement",
+    "Url",
+    "Window",
+] }
+
+[build-dependencies]
+slint-build = "1.18"
 
 [lints.clippy]
 print_stdout = { level = "deny", priority = 1}

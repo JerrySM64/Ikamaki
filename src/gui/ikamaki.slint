@@ -1,0 +1,316 @@
+import { Button, CheckBox, ComboBox, DatePickerPopup, LineEdit, ScrollView, Slider, SpinBox, TimePickerPopup } from "std-widgets.slint";
+
+// Editable text mirror of a single rotation override
+export struct OverrideRow {
+    interval: int,
+    regular: string,
+    ranked: string,
+    // Index into the rule ComboBox, 0 means "Default"
+    rule: int,
+}
+
+// A caption above whatever widget is placed inside
+component Field {
+    in property <string> label;
+
+    VerticalLayout {
+        spacing: 4px;
+        Text {
+            text: root.label;
+        }
+        @children
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Ikamaki";
+    // No explicit minimum, Slint derives it from the layout so nothing gets cut off
+    preferred-width: 820px;
+    preferred-height: 560px;
+
+    in-out property <int> count: 252;
+    in-out property <int> duration-hours: 2;
+    in-out property <int> start-year;
+    in-out property <int> start-month;
+    in-out property <int> start-day;
+    in-out property <int> start-hour;
+    in-out property <int> start-minute;
+    in-out property <bool> hash-kick;
+    in-out property <bool> allow-banned;
+    in-out property <bool> save-yml;
+    in-out property <[OverrideRow]> overrides;
+    in property <string> end-time;
+    in property <string> status;
+    // False on the web, where the YAML export is not built
+    in property <bool> yaml-supported: true;
+
+    // Fired whenever the count, the duration or the start time is edited
+    callback config-changed();
+    callback generate();
+    callback add-override();
+    callback remove-override(int);
+
+    // Left-pads a number with a zero so dates and times line up
+    pure function two-digits(value: int) -> string {
+        return (value < 10 ? "0" : "") + value;
+    }
+
+    VerticalLayout {
+        HorizontalLayout {
+            vertical-stretch: 1;
+
+            // Configuration
+            VerticalLayout {
+                width: 260px;
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Ikamaki";
+                    font-size: 22px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: "Friendly Sushi roll generating rotations for Splatoon";
+                    wrap: word-wrap;
+                }
+
+                Field {
+                    label: "Rotations";
+                    SpinBox {
+                        minimum: 1;
+                        maximum: 1000;
+                        value: root.count;
+                        edited(value) => {
+                            root.count = value;
+                            root.config-changed();
+                        }
+                    }
+                }
+
+                Field {
+                    label: "Rotation duration: \{root.duration-hours} h";
+                    Slider {
+                        minimum: 1;
+                        maximum: 24;
+                        value: root.duration-hours;
+                        changed(value) => {
+                            root.duration-hours = Math.round(value);
+                            root.config-changed();
+                        }
+                    }
+                }
+
+                Field {
+                    label: "Start time (local)";
+                    HorizontalLayout {
+                        spacing: 4px;
+                        Button {
+                            horizontal-stretch: 3;
+                            text: "\{root.start-year}-\{two-digits(root.start-month)}-\{two-digits(root.start-day)}";
+                            clicked => {
+                                date-popup.show();
+                            }
+                        }
+                        Button {
+                            horizontal-stretch: 2;
+                            text: "\{two-digits(root.start-hour)}:\{two-digits(root.start-minute)}";
+                            clicked => {
+                                time-popup.show();
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: "Schedule ends: \{root.end-time}";
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+
+                CheckBox {
+                    text: "Disconnect by memory hash";
+                    checked <=> root.hash-kick;
+                }
+                CheckBox {
+                    text: "Allow banned combinations";
+                    checked <=> root.allow-banned;
+                }
+                if root.yaml-supported: CheckBox {
+                    text: "Also save human-readable YAML";
+                    checked <=> root.save-yml;
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                Button {
+                    text: "Generate & Save";
+                    primary: true;
+                    clicked => {
+                        root.generate();
+                    }
+                }
+            }
+
+            // Overrides
+            VerticalLayout {
+                horizontal-stretch: 1;
+                padding: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "Overrides";
+                    font-size: 22px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: "Pin maps and a rule for specific rotations. Empty fields fall back to the random generator.";
+                    wrap: word-wrap;
+                }
+
+                ScrollView {
+                    vertical-stretch: 1;
+                    // Leave room for the vertical scroll bar next to the rows
+                    min-width: list.min-width + 16px;
+                    content-width: self.visible-width;
+                    content-height: list.preferred-height;
+
+                    list := VerticalLayout {
+                        width: parent.width;
+                        spacing: 8px;
+                        alignment: start;
+
+                        for row[index] in root.overrides: Rectangle {
+                            border-width: 1px;
+                            border-color: #8888;
+                            border-radius: 4px;
+
+                            GridLayout {
+                                padding: 8px;
+                                spacing: 6px;
+
+                                Row {
+                                    Text {
+                                        text: "Interval";
+                                        vertical-alignment: center;
+                                    }
+                                    SpinBox {
+                                        minimum: 1;
+                                        maximum: 100000;
+                                        value: row.interval;
+                                        edited(value) => {
+                                            root.overrides[index].interval = value;
+                                        }
+                                    }
+                                    Text {
+                                        text: "Rule";
+                                        vertical-alignment: center;
+                                    }
+                                    ComboBox {
+                                        model: ["Default", "Splat Zones (cVar)", "Tower Control (cVlf)", "Rainmaker (cVgl)"];
+                                        current-index: row.rule;
+                                        selected => {
+                                            root.overrides[index].rule = self.current-index;
+                                        }
+                                    }
+                                    Button {
+                                        text: "Remove";
+                                        clicked => {
+                                            root.remove-override(index);
+                                        }
+                                    }
+                                }
+                                Row {
+                                    Text {
+                                        text: "Regular maps";
+                                        vertical-alignment: center;
+                                    }
+                                    LineEdit {
+                                        placeholder-text: "e.g. 0,12";
+                                        text: row.regular;
+                                        edited(text) => {
+                                            root.overrides[index].regular = text;
+                                        }
+                                    }
+                                    Text {
+                                        text: "Ranked maps";
+                                        vertical-alignment: center;
+                                    }
+                                    LineEdit {
+                                        placeholder-text: "e.g. 6,14";
+                                        text: row.ranked;
+                                        edited(text) => {
+                                            root.overrides[index].ranked = text;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: "Add Override";
+                            clicked => {
+                                root.add-override();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Status bar
+        Rectangle {
+            background: #8882;
+            height: status-text.preferred-height + 12px;
+
+            status-text := Text {
+                x: 12px;
+                width: parent.width - 24px;
+                text: "Status: " + root.status;
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    date-popup := DatePickerPopup {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        date: {
+            year: root.start-year,
+            month: root.start-month,
+            day: root.start-day,
+        };
+        accepted(date) => {
+            root.start-year = date.year;
+            root.start-month = date.month;
+            root.start-day = date.day;
+            self.close();
+            root.config-changed();
+        }
+        canceled => {
+            self.close();
+        }
+    }
+
+    time-popup := TimePickerPopup {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        use-24-hour-format: true;
+        time: {
+            hour: root.start-hour,
+            minute: root.start-minute,
+            second: 0,
+        };
+        accepted(time) => {
+            root.start-hour = time.hour;
+            root.start-minute = time.minute;
+            self.close();
+            root.config-changed();
+        }
+        canceled => {
+            self.close();
+        }
+    }
+}
