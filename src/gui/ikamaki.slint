@@ -2,7 +2,14 @@ import { Button, CheckBox, ComboBox, DatePickerPopup, LineEdit, ScrollView, Slid
 
 // Editable text mirror of a single rotation override
 export struct OverrideRow {
+    // Rotation index, always snapped to a rotation inside the schedule
     interval: int,
+    // Local start time of that rotation, kept in sync by the app
+    year: int,
+    month: int,
+    day: int,
+    hour: int,
+    minute: int,
     regular: string,
     ranked: string,
     // Index into the rule ComboBox, 0 means "Default"
@@ -49,6 +56,14 @@ export component MainWindow inherits Window {
     callback generate();
     callback add-override();
     callback remove-override(int);
+    callback override-time-picked(int, int, int, int, int, int);
+
+    property <int> picker-index;
+    property <int> picker-year;
+    property <int> picker-month;
+    property <int> picker-day;
+    property <int> picker-hour;
+    property <int> picker-minute;
 
     // Left-pads a number with a zero so dates and times line up
     pure function two-digits(value: int) -> string {
@@ -192,15 +207,34 @@ export component MainWindow inherits Window {
 
                                 Row {
                                     Text {
-                                        text: "Interval";
+                                        text: "Rotation #\{row.interval}";
                                         vertical-alignment: center;
                                     }
-                                    SpinBox {
-                                        minimum: 1;
-                                        maximum: 100000;
-                                        value: row.interval;
-                                        edited(value) => {
-                                            root.overrides[index].interval = value;
+                                    HorizontalLayout {
+                                        spacing: 4px;
+                                        Button {
+                                            text: "\{row.year}-\{two-digits(row.month)}-\{two-digits(row.day)}";
+                                            clicked => {
+                                                root.picker-index = index;
+                                                root.picker-year = row.year;
+                                                root.picker-month = row.month;
+                                                root.picker-day = row.day;
+                                                root.picker-hour = row.hour;
+                                                root.picker-minute = row.minute;
+                                                override-date-popup.show();
+                                            }
+                                        }
+                                        Button {
+                                            text: "\{two-digits(row.hour)}:\{two-digits(row.minute)}";
+                                            clicked => {
+                                                root.picker-index = index;
+                                                root.picker-year = row.year;
+                                                root.picker-month = row.month;
+                                                root.picker-day = row.day;
+                                                root.picker-hour = row.hour;
+                                                root.picker-minute = row.minute;
+                                                override-time-popup.show();
+                                            }
                                         }
                                     }
                                     Text {
@@ -288,6 +322,41 @@ export component MainWindow inherits Window {
             root.start-day = date.day;
             self.close();
             root.config-changed();
+        }
+        canceled => {
+            self.close();
+        }
+    }
+
+    override-date-popup := DatePickerPopup {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        date: {
+            year: root.picker-year,
+            month: root.picker-month,
+            day: root.picker-day,
+        };
+        accepted(date) => {
+            self.close();
+            root.override-time-picked(root.picker-index, date.year, date.month, date.day, root.picker-hour, root.picker-minute);
+        }
+        canceled => {
+            self.close();
+        }
+    }
+
+    override-time-popup := TimePickerPopup {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        use-24-hour-format: true;
+        time: {
+            hour: root.picker-hour,
+            minute: root.picker-minute,
+            second: 0,
+        };
+        accepted(time) => {
+            self.close();
+            root.override-time-picked(root.picker-index, root.picker-year, root.picker-month, root.picker-day, time.hour, time.minute);
         }
         canceled => {
             self.close();
